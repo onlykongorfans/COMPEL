@@ -27,6 +27,11 @@ public sealed class MatchServerManagerOptions
     public string Gateway { get; set; } = "kongor.net";
 
     /// <summary>
+    ///     The master server endpoint used to authenticate and register the server manager and game servers.
+    /// </summary>
+    public string MasterServer { get; set; } = "api.kongor.net";
+
+    /// <summary>
     ///     The server region. In order for the server to be TMM-compatible, only the values "USW", "USE", "EU", "AU", "BR", "RU", "SEA", and "NEWERTH" are valid.
     /// </summary>
     public string Location { get; set; } = "NEWERTH";

@@ -24,6 +24,8 @@ internal sealed class UDPForwarder : IDisposable
     private readonly IPEndPoint serverEndPoint;
     private readonly ILogger logger;
     private readonly Socket frontSocket;
+    private readonly Func<byte[], int, byte[]?>? interceptor;
+    private readonly bool challengeClients;
     private readonly ConcurrentDictionary<IPEndPoint, ClientSession> sessions = new ();
     private readonly Lock sessionsLock = new ();
 
@@ -34,12 +36,14 @@ internal sealed class UDPForwarder : IDisposable
 
     public int LocalPort { get; }
 
-    public UDPForwarder(int publicPort, int localPort, ILogger logger)
+    public UDPForwarder(int publicPort, int localPort, ILogger logger, Func<byte[], int, byte[]?>? interceptor = null, bool challengeClients = true)
     {
         PublicPort = publicPort;
         LocalPort = localPort;
         serverEndPoint = new IPEndPoint(IPAddress.Loopback, localPort);
         this.logger = logger;
+        this.interceptor = interceptor;
+        this.challengeClients = challengeClients;
 
         frontSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
         DisableConnectionResetReporting(frontSocket);
@@ -73,6 +77,17 @@ internal sealed class UDPForwarder : IDisposable
 
             IPEndPoint client = (IPEndPoint)result.RemoteEndPoint;
 
+            byte[]? interceptedResponse = interceptor?.Invoke(buffer, result.ReceivedBytes);
+
+            if (interceptedResponse is not null)
+            {
+                try { await frontSocket.SendToAsync(interceptedResponse, SocketFlags.None, client, stoppingToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
+                catch (Exception exception) { logger.LogDebug(exception, "Failed To Send Intercepted Response To {Client}", client); }
+
+                continue;
+            }
+
             ClientSession session;
             bool created;
 
@@ -80,7 +95,7 @@ internal sealed class UDPForwarder : IDisposable
             catch (Exception exception) { logger.LogDebug(exception, "Failed To Create Proxy Session For {Client}", client); continue; }
 
             // Authenticate A New Client Immediately So It Does Not Exhaust Its Unauthenticated Packet Budget Waiting For The First Periodic Renewal.
-            if (created)
+            if (created && challengeClients)
                 SendChallenge(client);
 
             session.Touch();

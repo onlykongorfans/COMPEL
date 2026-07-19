@@ -54,11 +54,14 @@ public sealed class UDPProxyService : BackgroundService
             return;
         }
 
-        for (int instance = 0; instance < ports.Instances; instance++)
+        // The Ping Responder Owns The First Public Game Port Because HoN Uses The Same Registered Endpoint For Browser Pings And Game Connections. It Multiplexes Pings Locally And Forwards Every Other Datagram To The First Game Server. Additional Instances Use Ordinary Forwarders Here.
+        for (int instance = 1; instance < ports.Instances; instance++)
         {
             TryAddForwarder(ports.PublicGameStart + instance, ports.LocalGameStart + instance, "Game");
-            TryAddForwarder(ports.PublicVoiceStart + instance, ports.LocalVoiceStart + instance, "Voice");
         }
+
+        for (int instance = 0; instance < ports.Instances; instance++)
+            TryAddForwarder(ports.PublicVoiceStart + instance, ports.BoundVoiceStart + instance, "Voice");
 
         if (forwarders.Count is 0)
         {
@@ -76,7 +79,7 @@ public sealed class UDPProxyService : BackgroundService
         logger.LogInformation
         (
             "Proxy Forwarding {Instances} Instance(s): Public Game {PublicGameStart}-{PublicGameEnd} And Voice {PublicVoiceStart}-{PublicVoiceEnd} To Local Game {LocalGameStart}-{LocalGameEnd} And Voice {LocalVoiceStart}-{LocalVoiceEnd}",
-            ports.Instances, ports.PublicGameStart, ports.PublicGameEnd, ports.PublicVoiceStart, ports.PublicVoiceEnd, ports.LocalGameStart, ports.LocalGameEnd, ports.LocalVoiceStart, ports.LocalVoiceEnd
+            ports.Instances, ports.PublicGameStart, ports.PublicGameEnd, ports.PublicVoiceStart, ports.PublicVoiceEnd, ports.LocalGameStart, ports.LocalGameEnd, ports.BoundVoiceStart, ports.BoundVoiceEnd
         );
 
         List<Task> tasks = forwarders.Select(forwarder => forwarder.Run(stoppingToken)).ToList();

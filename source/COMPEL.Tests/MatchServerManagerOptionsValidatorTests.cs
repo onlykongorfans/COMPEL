@@ -11,6 +11,7 @@ public sealed class MatchServerManagerOptionsValidatorTests
         Password             = "secret",
         Instances            = 1,
         Gateway              = "kongor.net",
+        MasterServer         = "api.kongor.net",
         Location             = "EU",
         ServerNamePrefix     = "KONGOR ARENA",
         UseProxy             = true,
@@ -41,6 +42,15 @@ public sealed class MatchServerManagerOptionsValidatorTests
     {
         MatchServerManagerOptions options = ValidOptions();
         options.Password = "PASSWORD";
+
+        await Assert.That(Validate(options).Failed).IsTrue();
+    }
+
+    [Test]
+    public async Task An_Empty_Master_Server_Is_Rejected()
+    {
+        MatchServerManagerOptions options = ValidOptions();
+        options.MasterServer = string.Empty;
 
         await Assert.That(Validate(options).Failed).IsTrue();
     }

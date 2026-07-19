@@ -39,13 +39,23 @@ public sealed class UDPPingResponder : BackgroundService
         int port = ports.PingPort;
 
         string? templateVersion = distribution.DistributionVersion;
+
+        if (string.IsNullOrWhiteSpace(templateVersion))
+        {
+            IsBound = false;
+
+            logger.LogError("The Installed Distribution Version Could Not Be Determined; The UDP Ping Responder Will Not Emit Malformed Server-Browser Responses");
+
+            return;
+        }
+
         byte[] response = BuildResponseTemplate(options.ServerNamePrefix, templateVersion);
 
-        using Socket socket = new (AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        UDPForwarder forwarder;
 
         try
         {
-            socket.Bind(new IPEndPoint(IPAddress.Any, port));
+            forwarder = new UDPForwarder(port, ports.LocalGameStart, logger, InterceptPing, challengeClients: options.UseProxy);
 
             IsBound = true;
         }
@@ -59,39 +69,31 @@ public sealed class UDPPingResponder : BackgroundService
             return;
         }
 
-        logger.LogInformation("Answering Master-Server Pings On UDP Port {Port}", port);
-
-        byte[] buffer = new byte[1460];
-        EndPoint sender = new IPEndPoint(IPAddress.Any, 0);
-
-        while (stoppingToken.IsCancellationRequested is false)
+        using (forwarder)
         {
-            SocketReceiveFromResult result;
+            logger.LogInformation("Answering Master-Server Pings And Forwarding Game Traffic From UDP Port {PublicPort} To {LocalPort}", port, ports.LocalGameStart);
 
-            try
-            {
-                result = await socket.ReceiveFromAsync(buffer, SocketFlags.None, sender, stoppingToken).ConfigureAwait(false);
-            }
+            await forwarder.Run(stoppingToken).ConfigureAwait(false);
+        }
 
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-
-            catch (Exception exception)
-            {
-                logger.LogDebug(exception, "Ping Receive Failed");
-
-                continue;
-            }
-
-            if (result.ReceivedBytes != RequestLength || buffer[43] != PingMarker)
-                continue;
+        byte[]? InterceptPing(byte[] buffer, int receivedBytes)
+        {
+            if (receivedBytes != RequestLength || buffer[43] != PingMarker)
+                return null;
 
             // Rebuild The Template Whenever The Distribution Version Has Changed Since It Was Last Built, So An On-Demand Synchronisation Is Reflected In Subsequent Pongs Instead Of Being Baked In Forever.
-            if (distribution.DistributionVersion != templateVersion)
+            string? currentVersion = distribution.DistributionVersion;
+
+            if (currentVersion != templateVersion)
             {
-                templateVersion = distribution.DistributionVersion;
+                if (string.IsNullOrWhiteSpace(currentVersion))
+                {
+                    logger.LogWarning("The Distribution Version Became Unavailable; Retaining Pong Version {Version}", templateVersion);
+
+                    return response;
+                }
+
+                templateVersion = currentVersion;
                 response = BuildResponseTemplate(options.ServerNamePrefix, templateVersion);
             }
 
@@ -99,23 +101,17 @@ public sealed class UDPPingResponder : BackgroundService
             response[44] = buffer[44];
             response[45] = buffer[45];
 
-            try
-            {
-                await socket.SendToAsync(response, SocketFlags.None, result.RemoteEndPoint, stoppingToken).ConfigureAwait(false);
-            }
-
-            catch (Exception exception)
-            {
-                logger.LogDebug(exception, "Ping Response Send Failed");
-            }
+            return response;
         }
     }
 
-    internal static byte[] BuildResponseTemplate(string serverName, string? version)
+    internal static byte[] BuildResponseTemplate(string serverName, string version)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(version);
+
         byte[] serverNameBytes = Encoding.UTF8.GetBytes(serverName);
 
-        byte[] versionBytes = Encoding.UTF8.GetBytes(version ?? string.Empty);
+        byte[] versionBytes = Encoding.UTF8.GetBytes(version);
         int versionLength = Math.Min(versionBytes.Length, 12);
 
         // The Trailing Bytes Beyond The Version Are Part Of The Wire Format And Are Left Zeroed, As In The Original Responder.

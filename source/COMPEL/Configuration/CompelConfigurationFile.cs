@@ -10,6 +10,7 @@ public sealed class CompelConfigurationFile
     public PasswordSetting Password { get; set; } = new ();
     public InstancesSetting Instances { get; set; } = new ();
     public GatewaySetting Gateway { get; set; } = new ();
+    public MasterServerSetting MasterServer { get; set; } = new ();
     public LocationSetting Location { get; set; } = new ();
     public ServerNamePrefixSetting ServerNamePrefix { get; set; } = new ();
     public UseProxySetting UseProxy { get; set; } = new ();
@@ -41,7 +42,13 @@ public sealed class InstancesSetting
 public sealed class GatewaySetting
 {
     public string Value { get; set; } = "kongor.net";
-    public string Description => "The entry point for game servers and the server manager. Use 'kongor.net' for the official public gateway, 'localhost' for local development, a LAN or public IP address, or a local or public host name to resolve.";
+    public string Description => "The IPv4 address advertised by the game servers and server manager. Use 'PUBLIC' to detect the host's public address, 'localhost' for same-machine development, a LAN or public IPv4 address, or a host name to resolve.";
+}
+
+public sealed class MasterServerSetting
+{
+    public string Value { get; set; } = "api.kongor.net";
+    public string Description => "The master server endpoint used to authenticate and register the server manager and game servers. Include the port when the master server does not use its default port, for example '192.168.0.186:5555'.";
 }
 
 public sealed class LocationSetting
@@ -59,13 +66,13 @@ public sealed class ServerNamePrefixSetting
 public sealed class UseProxySetting
 {
     public bool Value { get; set; } = true;
-    public string Description => "Whether to run COMPEL's built-in proxy in front of the game servers. When enabled, clients connect to public ports offset 10000 above the local server ports (e.g. 21235 instead of 11235); the proxy forwards them to the servers and authenticates each client with the challenge protocol required on that port range. Set to 'false' to make the local server ports public directly, without the proxy.";
+    public string Description => "Whether to run COMPEL's built-in proxy in front of the game servers. When enabled, clients connect through the public 20000+ range (e.g. the registered endpoint 21234 is relayed to the first game socket on 11235); the proxy forwards them to the servers and authenticates each client with the challenge protocol required on that port range. Set to 'false' to use the direct 10000+ endpoints.";
 }
 
 public sealed class PortRangeOffsetSetting
 {
     public int Value { get; set; }
-    public string Description => "The offset from the start of the valid game/voice port ranges at which the game/voice ports to be used at runtime will start. The game/voice port ranges without the proxy are 11235-11335/11435-11535, and with the proxy they are 21235-21335/21435-21535.";
+    public string Description => "The offset from the start of the valid game/voice port ranges. HoN registers the first game/voice endpoints one below the manager's allocated starts: 11234/11434 without the proxy, or 21234/21434 with the proxy; subsequent instances use consecutive ports.";
 }
 
 public sealed class RuntimeArtefactsPathSetting

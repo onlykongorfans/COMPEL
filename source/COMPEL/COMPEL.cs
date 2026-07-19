@@ -47,10 +47,10 @@ if (Environment.IsPrivilegedProcess is false)
     return;
 }
 
-// The Master Server Must Be Reachable Before Launching: The Servers Cannot Register Or Authenticate Without It, So An Unreachable Master Server Is A Hard Startup Failure. A Localhost Gateway Uses A Loopback Master Server And Is Not Pinged.
-if (await MasterServerIsReachable(configuration.Gateway.Value) is false)
+// The Master Server Must Be Reachable Before Launching: The Servers Cannot Register Or Authenticate Without It, So An Unreachable Master Server Is A Hard Startup Failure. A Loopback Master Server Is Assumed Reachable Without An ICMP Probe.
+if (await MasterServerIsReachable(configuration.MasterServer.Value) is false)
 {
-    Console.WriteLine(@"The Master Server ""api.kongor.net"" Is Not Reachable; COMPEL Will Not Start.");
+    Console.WriteLine($@"The Master Server ""{configuration.MasterServer.Value}"" Is Not Reachable; COMPEL Will Not Start.");
     Console.WriteLine("Check The Host's Network Connection, Then Start COMPEL Again.");
 
     return;
@@ -81,6 +81,7 @@ builder.Services.AddOptions<MatchServerManagerOptions>().Configure(options =>
     options.Password             = configuration.Password.Value;
     options.Instances            = configuration.Instances.Value;
     options.Gateway              = configuration.Gateway.Value;
+    options.MasterServer         = configuration.MasterServer.Value;
     options.Location             = configuration.Location.Value;
     options.ServerNamePrefix     = configuration.ServerNamePrefix.Value;
     options.UseProxy             = configuration.UseProxy.Value;
@@ -184,13 +185,17 @@ catch (OptionsValidationException exception)
     return;
 }
 
-// Pings The Master Server (Unless The Gateway Is Loopback, Whose Master Server Is Local And Assumed Reachable), Reporting The Round-Trip Time On Success. A Filtered ICMP Response Is Treated As Unreachable, As In The Legacy Startup Check.
-static async Task<bool> MasterServerIsReachable(string gateway)
+// Pings The Master Server (Unless It Is Loopback And Therefore Assumed Reachable), Reporting The Round-Trip Time On Success. A Filtered ICMP Response Is Treated As Unreachable, As In The Legacy Startup Check.
+static async Task<bool> MasterServerIsReachable(string masterServer)
 {
-    if (gateway.Equals("localhost", StringComparison.OrdinalIgnoreCase) || gateway.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase))
-        return true;
+    string masterServerHost = masterServer;
+    int separatorIndex = masterServer.LastIndexOf(':');
 
-    const string masterServerHost = "api.kongor.net";
+    if (separatorIndex > 0 && masterServer.IndexOf(':') == separatorIndex && int.TryParse(masterServer[(separatorIndex + 1)..], out _))
+        masterServerHost = masterServer[..separatorIndex];
+
+    if (masterServerHost.Equals("localhost", StringComparison.OrdinalIgnoreCase) || masterServerHost.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase))
+        return true;
 
     try
     {

@@ -11,6 +11,7 @@ public sealed class ManagerArgumentsTests
         Password             = "secret",
         Instances            = 2,
         Gateway              = "kongor.net",
+        MasterServer         = "api.kongor.net",
         Location             = "EU",
         ServerNamePrefix     = "KONGOR ARENA",
         UseProxy             = true,

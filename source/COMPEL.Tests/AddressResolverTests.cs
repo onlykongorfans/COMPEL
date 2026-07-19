@@ -5,8 +5,8 @@ namespace COMPEL.Tests;
 /// </summary>
 public sealed class AddressResolverTests
 {
-    private static AddressResolver Resolver(string gateway)
-        => new (Options.Create(new MatchServerManagerOptions { Gateway = gateway }), NullLogger<AddressResolver>.Instance);
+    private static AddressResolver Resolver(string gateway, string masterServer = "api.kongor.net")
+        => new (Options.Create(new MatchServerManagerOptions { Gateway = gateway, MasterServer = masterServer }), NullLogger<AddressResolver>.Instance);
 
     [Test]
     public async Task A_Localhost_Gateway_Resolves_To_The_Loopback_Address()
@@ -43,14 +43,8 @@ public sealed class AddressResolverTests
     }
 
     [Test]
-    public async Task The_Master_Server_Endpoint_Uses_The_Local_Port_For_A_Localhost_Gateway()
+    public async Task The_Master_Server_Endpoint_Is_Independent_Of_The_Advertised_Gateway()
     {
-        await Assert.That(Resolver("localhost").MasterServerHostAndPort).IsEqualTo("127.0.0.1:5555");
-    }
-
-    [Test]
-    public async Task The_Master_Server_Endpoint_Uses_The_Public_Gateway_Without_A_Port_Otherwise()
-    {
-        await Assert.That(Resolver("kongor.net").MasterServerHostAndPort).IsEqualTo("api.kongor.net");
+        await Assert.That(Resolver("192.168.0.165", "192.168.0.186:5555").MasterServerHostAndPort).IsEqualTo("192.168.0.186:5555");
     }
 }

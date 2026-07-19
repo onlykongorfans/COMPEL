@@ -128,6 +128,55 @@ public sealed class UDPForwarderTests
         }
     }
 
+    [Test]
+    public async Task An_Intercepted_Datagram_Is_Answered_On_The_Public_Port_And_Is_Not_Forwarded()
+    {
+        int publicPort = FreeUDPPort();
+        int localPort = FreeUDPPort();
+
+        using Socket server = new (AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        server.Bind(new IPEndPoint(IPAddress.Loopback, localPort));
+
+        byte[] request = Encoding.UTF8.GetBytes("PING");
+        byte[] response = Encoding.UTF8.GetBytes("PONG");
+
+        using UDPForwarder forwarder = new
+        (
+            publicPort,
+            localPort,
+            NullLogger.Instance,
+            (datagram, length) => datagram.AsSpan(0, length).SequenceEqual(request) ? response : null,
+            challengeClients: false
+        );
+
+        using CancellationTokenSource lifetime = new ();
+        Task run = forwarder.Run(lifetime.Token);
+
+        try
+        {
+            using Socket client = new (AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            client.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+
+            await client.SendToAsync(request, SocketFlags.None, new IPEndPoint(IPAddress.Loopback, publicPort));
+
+            (byte[] Payload, EndPoint Sender)? intercepted = await TryReceive(client);
+            (byte[] Payload, EndPoint Sender)? forwarded = await TryReceive(server);
+
+            using (Assert.Multiple())
+            {
+                await Assert.That(intercepted?.Payload.SequenceEqual(response)).IsTrue();
+                await Assert.That(forwarded).IsNull();
+            }
+        }
+
+        finally
+        {
+            await lifetime.CancelAsync();
+
+            try { await run; } catch (Exception) { }
+        }
+    }
+
     private static bool IsChallenge(byte[] datagram)
         => datagram.Length >= 58 && datagram[40] is 0xFF && datagram[41] is 0xFF && (datagram[42] & 0x40) is not 0 && datagram[43] is 0x00;
 

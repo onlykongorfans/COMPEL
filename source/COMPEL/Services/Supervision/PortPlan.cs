@@ -58,15 +58,22 @@ public sealed class PortPlan
 
     public int LocalVoiceEnd => LocalVoiceStart + Instances - 1;
 
-    // Public Ports: The Ports Clients Connect To. Without The Proxy They Equal The Local Ports; With The Proxy They Are Offset Above Them, And The Proxy Forwards Them Down To The Local Ports.
+    /// <summary>
+    ///     The first voice socket the HoN cowmaster actually binds. The manager treats its configured voice start as the first value after the cowmaster base, so the bound and registered voice range begins one port earlier.
+    /// </summary>
+    public int BoundVoiceStart => LocalVoiceStart - 1;
 
-    public int PublicGameStart => UseProxy ? LocalGameStart + ProxyPublicOffset : LocalGameStart;
+    public int BoundVoiceEnd => BoundVoiceStart + Instances - 1;
 
-    public int PublicGameEnd => UseProxy ? LocalGameEnd + ProxyPublicOffset : LocalGameEnd;
+    // Public Ports: The Ports Clients Connect To. HoN Registers The Cowmaster Base Port For The First Instance, Which Is One Below The Manager's Configured Game And Voice Starts. The First Game Endpoint Is Also The Server-Browser Ping Endpoint.
 
-    public int PublicVoiceStart => UseProxy ? LocalVoiceStart + ProxyPublicOffset : LocalVoiceStart;
+    public int PublicGameStart => PingPort;
 
-    public int PublicVoiceEnd => UseProxy ? LocalVoiceEnd + ProxyPublicOffset : LocalVoiceEnd;
+    public int PublicGameEnd => PublicGameStart + Instances - 1;
+
+    public int PublicVoiceStart => UseProxy ? BoundVoiceStart + ProxyPublicOffset : BoundVoiceStart;
+
+    public int PublicVoiceEnd => PublicVoiceStart + Instances - 1;
 
     /// <summary>
     ///     The port on which COMPEL answers master-server pings. With the proxy enabled it sits in the public anti-cheat range.

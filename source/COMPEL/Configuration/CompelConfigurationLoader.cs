@@ -60,6 +60,7 @@ public static class CompelConfigurationLoader
         file.Password             ??= new ();
         file.Instances            ??= new ();
         file.Gateway              ??= new ();
+        file.MasterServer         ??= new ();
         file.Location             ??= new ();
         file.ServerNamePrefix     ??= new ();
         file.UseProxy             ??= new ();

@@ -27,12 +27,8 @@ public sealed class UDPPingResponderTests
     }
 
     [Test]
-    public async Task A_Missing_Version_Produces_A_Template_With_No_Version_Bytes()
+    public async Task A_Missing_Version_Is_Rejected_Instead_Of_Producing_A_Malformed_Response()
     {
-        byte[] response = UDPPingResponder.BuildResponseTemplate("Server", version: null);
-
-        byte[] serverNameBytes = Encoding.UTF8.GetBytes("Server");
-
-        await Assert.That(response.Length).IsEqualTo(69 + serverNameBytes.Length);
+        await Assert.That(() => UDPPingResponder.BuildResponseTemplate("Server", string.Empty)).Throws<ArgumentException>();
     }
 }

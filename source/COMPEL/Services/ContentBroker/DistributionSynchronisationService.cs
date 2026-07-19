@@ -8,6 +8,7 @@ namespace COMPEL.Services.ContentBroker;
 public sealed class DistributionSynchronisationService : BackgroundService
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(15);
+    private const string LegacyManifestSuffix = ".manifest.xml.zip";
 
     // COMPEL Installs The Distribution Alongside Its Own Executable, So Its Own Files (The Binary, "COMPEL.json", "COMPEL.log", "COMPEL.lock", And Any Build Artefacts) Are Protected From Being Overwritten Or Deleted By The Mirror, Regardless Of What The Manifest Declares.
     private static readonly string[] OwnFileProtectionPatterns = [ "COMPEL*" ];
@@ -43,6 +44,8 @@ public sealed class DistributionSynchronisationService : BackgroundService
         Variant = ResolveServerVariant(this.options);
 
         InstallationDirectory = ResolveInstallationDirectory(this.options.InstallationDirectory);
+
+        DistributionVersion = ResolveInstalledDistributionVersion(InstallationDirectory);
     }
 
     // The Distribution Installs Alongside The COMPEL Executable By Default (An Empty Configured Directory), So It Sits Beside The Binary Rather Than In A Peer Folder. A Relative Path Is Resolved Against The Executable's Directory, And A Fully Qualified Path Is Honoured As-Is.
@@ -71,7 +74,7 @@ public sealed class DistributionSynchronisationService : BackgroundService
         // The Initial Synchronisation Can Be Disabled For Development And Testing: The Existing Local Distribution Is Used, And On-Demand Synchronisation Via The Control Plane Still Works.
         if (options.Synchronisation is false)
         {
-            logger.LogInformation("Initial CDN Synchronisation Is Disabled; Proceeding With The Existing Local Distribution");
+            logger.LogInformation("Initial CDN Synchronisation Is Disabled; Proceeding With The Existing Local Distribution Version {Version}", DistributionVersion ?? "UNKNOWN");
 
             SynchronisationState = "Disabled";
 
@@ -232,4 +235,24 @@ public sealed class DistributionSynchronisationService : BackgroundService
           OperatingSystem.IsWindows() ? options.WindowsVariant
         : OperatingSystem.IsLinux()   ? options.LinuxVariant
         : throw new PlatformNotSupportedException("COMPEL Hosts Match Servers On Windows And Linux Only");
+
+    /// <summary>
+    ///     Resolves the newest installed legacy distribution version from its versioned manifest archive name. Legacy HoN distributions place archives such as <c>4.10.1.0.manifest.xml.zip</c> beside the executable; this remains authoritative when initial CDN synchronisation is disabled and no remote JSON manifest has been fetched.
+    /// </summary>
+    internal static string? ResolveInstalledDistributionVersion(string installationDirectory)
+    {
+        if (Directory.Exists(installationDirectory) is false)
+            return null;
+
+        System.Version? newestVersion = Directory
+            .EnumerateFiles(installationDirectory, $"*{LegacyManifestSuffix}", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .Where(fileName => string.IsNullOrWhiteSpace(fileName) is false)
+            .Select(fileName => fileName![..^LegacyManifestSuffix.Length])
+            .Select(candidate => System.Version.TryParse(candidate, out System.Version? version) ? version : null)
+            .Where(version => version is not null)
+            .Max();
+
+        return newestVersion?.ToString();
+    }
 }

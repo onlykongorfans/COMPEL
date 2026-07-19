@@ -46,6 +46,12 @@ public sealed class MatchServerManagerOptionsValidator : IValidateOptions<MatchS
         if (string.IsNullOrWhiteSpace(options.Gateway))
             failures.Add(@"""Gateway"" Must Be Provided");
 
+        if (string.IsNullOrWhiteSpace(options.MasterServer))
+            failures.Add(@"""MasterServer"" Must Be Provided");
+
+        else if (ContainsUnsafeManagerArgumentCharacter(options.MasterServer))
+            failures.Add(@"""MasterServer"" Must Not Contain A Double Quote, Semicolon, Or Control Character");
+
         if (string.IsNullOrWhiteSpace(options.Location))
             failures.Add(@"""Location"" Must Be Provided");
 

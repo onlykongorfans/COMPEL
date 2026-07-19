@@ -27,7 +27,8 @@ All host-facing configuration lives in a single `COMPEL.json` beside the executa
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `UserName` / `Password` | The Project KONGOR host account credentials.                                                                                                                                 |
 | `Instances`             | Number of match server instances (1 … logical processor count).                                                                                                              |
-| `Gateway`               | `kongor.net`, `localhost`, `PUBLIC` (auto-detect public IP), an IP address, or a host name.                                                                                  |
+| `Gateway`               | Address advertised by the match servers: `localhost`, `PUBLIC` (auto-detect public IP), an IPv4 address, or a host name.                                                    |
+| `MasterServer`          | Master server endpoint used for authentication and registration, such as `api.kongor.net` or `192.168.0.186:5555`.                                                          |
 | `Location`              | TMM region: `USW`, `USE`, `EU`, `AU`, `BR`, `RU`, `SEA`, or `NEWERTH`.                                                                                                       |
 | `ServerNamePrefix`      | The base match server name. The instance index is appended.                                                                                                                  |
 | `UseProxy`              | Whether to run the proxy (public port remapping + client challenge authentication. Defaults to `true`).                                                                      |
@@ -43,7 +44,7 @@ All host-facing configuration lives in a single `COMPEL.json` beside the executa
 dotnet run --project source/COMPEL
 ```
 
-On first run COMPEL writes a default `COMPEL.json` next to the executable and exits. Set at least `UserName` and `Password` (and `AuthenticationToken` to enable remote management, or `Gateway` to `localhost` for a local master server), then run again. Logs are written to the console and to a single `COMPEL.log` beside the executable.
+On first run COMPEL writes a default `COMPEL.json` next to the executable and exits. Set at least `UserName` and `Password`; set `Gateway` to the address clients use for the match-server host and `MasterServer` to the NEXUS master-server endpoint. Set `AuthenticationToken` to enable remote management. Logs are written to the console and to a single `COMPEL.log` beside the executable.
 
 ## Control Plane
 
