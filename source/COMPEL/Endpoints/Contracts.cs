@@ -28,6 +28,7 @@ public sealed record StatusResponse
     string Location,
     string? ServerAddress,
     int Instances,
+    int IdleTarget,
     bool UseProxy,
     int PortRangeOffset,
     PortAllocationResponse Ports,

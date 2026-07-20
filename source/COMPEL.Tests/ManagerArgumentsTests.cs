@@ -10,6 +10,7 @@ public sealed class ManagerArgumentsTests
         UserName             = "KONGOR",
         Password             = "secret",
         Instances            = 2,
+        IdleTarget           = 1,
         Gateway              = "kongor.net",
         MasterServer         = "api.kongor.net",
         Location             = "EU",
@@ -57,6 +58,62 @@ public sealed class ManagerArgumentsTests
             await Assert.That(joined.Contains("Set svr_location EU")).IsTrue();
             await Assert.That(joined.Contains("Set svr_ip 1.2.3.4")).IsTrue();
         }
+    }
+
+    [Test]
+    public async Task The_Manager_Maximum_Matches_The_Configured_Instance_And_Port_Capacity()
+    {
+        MatchServerManagerOptions options = SampleOptions();
+
+        // Keep The Requested Count Different From The Runtime Processor Count So The Test Detects A Regression To CPU-Based Manager Capacity.
+        options.Instances = Environment.ProcessorCount is 1 ? 2 : 1;
+
+        string joined = string.Join(' ', ManagerArguments.Build(options, new PortPlan(options), "1.2.3.4", "api.kongor.net"));
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(joined.Contains($"Set man_numSlaveAccounts {options.Instances}")).IsTrue();
+            await Assert.That(joined.Contains($"Set man_maxServers {options.Instances}")).IsTrue();
+        }
+    }
+
+    [Test]
+    public async Task The_Linux_Fork_Workaround_Preserves_Full_Startup_Capacity_And_Disables_Native_Respawn()
+    {
+        MatchServerManagerOptions options = SampleOptions();
+        options.Instances = 5;
+        options.IdleTarget = 3;
+
+        string joined = string.Join
+        (
+            ' ',
+            ManagerArguments.Build
+            (
+                options,
+                new PortPlan(options),
+                "1.2.3.4",
+                "api.kongor.net",
+                disableNativeRespawn: true,
+                initialIdleTarget: 0
+            )
+        );
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(joined.Contains("Set man_numSlaveAccounts 5")).IsTrue();
+            await Assert.That(joined.Contains("Set man_endServerPort 11239")).IsTrue();
+            await Assert.That(joined.Contains("Set man_maxServers 5")).IsTrue();
+            await Assert.That(joined.Contains("Set man_idleTarget 0")).IsTrue();
+            await Assert.That(joined.Contains("Set man_respawnServers false")).IsTrue();
+        }
+    }
+
+    [Test]
+    public async Task Native_Respawn_Remains_At_The_Platform_Default_Without_The_Linux_Workaround()
+    {
+        string joined = string.Join(' ', Build());
+
+        await Assert.That(joined.Contains("man_respawnServers")).IsFalse();
     }
 
     [Test]

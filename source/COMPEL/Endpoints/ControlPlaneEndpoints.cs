@@ -47,6 +47,7 @@ public static class ControlPlaneEndpoints
                 Location:                  options.Location,
                 ServerAddress:             supervisor.ServerAddress,
                 Instances:                 options.Instances,
+                IdleTarget:                options.IdleTarget,
                 UseProxy:                  options.UseProxy,
                 PortRangeOffset:           options.PortRangeOffset,
                 Ports:                     portAllocation,

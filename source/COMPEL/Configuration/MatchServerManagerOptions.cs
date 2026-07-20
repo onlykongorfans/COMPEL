@@ -22,6 +22,11 @@ public sealed class MatchServerManagerOptions
     public int Instances { get; set; } = 1;
 
     /// <summary>
+    ///     The number of spawned instances CowMaster should keep awake and immediately selectable while the remainder sleep until demand requires them.
+    /// </summary>
+    public int IdleTarget { get; set; } = 1;
+
+    /// <summary>
     ///     The entry point for game servers and the server manager: "localhost" for local development, "PUBLIC" to auto-detect the public IP address, a LAN or public IP address, or a host name to resolve.
     /// </summary>
     public string Gateway { get; set; } = "kongor.net";

@@ -9,6 +9,7 @@ public sealed class CompelConfigurationFile
     public UserNameSetting UserName { get; set; } = new ();
     public PasswordSetting Password { get; set; } = new ();
     public InstancesSetting Instances { get; set; } = new ();
+    public IdleTargetSetting IdleTarget { get; set; } = new ();
     public GatewaySetting Gateway { get; set; } = new ();
     public MasterServerSetting MasterServer { get; set; } = new ();
     public LocationSetting Location { get; set; } = new ();
@@ -37,6 +38,12 @@ public sealed class InstancesSetting
 {
     public int Value { get; set; } = 1;
     public string Description => "The number of server instances to spawn. This must be between one and the number of logical processors. The server manager spreads the instances across the available processors; running COMPEL with elevated privileges is required for the manager to assign their processor affinity.";
+}
+
+public sealed class IdleTargetSetting
+{
+    public int Value { get; set; } = 1;
+    public string Description => "The number of configured instances CowMaster should keep IDLE and immediately selectable. The remaining instances stay SLEEPING until demand wakes them. This must be between zero and Instances.";
 }
 
 public sealed class GatewaySetting

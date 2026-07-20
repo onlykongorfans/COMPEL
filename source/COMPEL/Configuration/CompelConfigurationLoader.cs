@@ -59,6 +59,7 @@ public static class CompelConfigurationLoader
         file.UserName             ??= new ();
         file.Password             ??= new ();
         file.Instances            ??= new ();
+        file.IdleTarget           ??= new ();
         file.Gateway              ??= new ();
         file.MasterServer         ??= new ();
         file.Location             ??= new ();

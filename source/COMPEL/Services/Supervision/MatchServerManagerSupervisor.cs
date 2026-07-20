@@ -8,6 +8,11 @@ namespace COMPEL.Services.Supervision;
 public sealed class MatchServerManagerSupervisor : BackgroundService
 {
     private static readonly TimeSpan RestartBackoff = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan LinuxIdleActivationDelay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan LinuxStartupCommandRetryDelay = TimeSpan.FromSeconds(5);
+
+    private const string LinuxConsoleDirectory = "/var/run/hon";
+    private const string LinuxManagerConsoleName = "manager";
 
     private readonly MatchServerManagerOptions options;
     private readonly DistributionSynchronisationService distribution;
@@ -22,6 +27,7 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
     private volatile bool desiredRunning = true;
     private volatile bool managerRunning;
     private Process? managerProcess;
+    private CancellationTokenSource? linuxStartupCompletionCancellation;
     private long lastAttemptTicks;
 
     public MatchServerManagerSupervisor(IOptions<MatchServerManagerOptions> options, DistributionSynchronisationService distribution, UDPProxyService proxy, AddressResolver addressResolver, ArtefactsLocator artefacts, PortPlan ports, ILogger<MatchServerManagerSupervisor> logger)
@@ -192,7 +198,19 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
         // Sweep Before Every Launch, Not Only At Startup: A Previous Manager's Spawned Servers Can Be Reparented (For Example To The Init Process) And So Escape "Process.Kill(entireProcessTree)", Leaving Them Holding The Ports This Launch Is About To Bind.
         KillOrphanedProcesses();
 
-        string[] arguments = ManagerArguments.Build(options, Ports, address, addressResolver.MasterServerHostAndPort);
+        PrepareLinuxConsoleDirectory();
+
+        // Runtime Changes To "man_maxServers" Are Stored By CowMaster But Do Not Trigger Creation Of Another Slave, So The Full Configured Capacity Must Be Present At Initialisation. On Linux, Waking A Slave While CowMaster Is Still Forking The Remaining Capacity Can Lose The First Child While Its File Descriptors Remain Open. Start The Pool Sleeping With Native Respawn Temporarily Disabled, Then Activate The Configured Idle Target And Restore Respawn After The Fork Burst Has Settled.
+        bool linuxForkWorkaround = OperatingSystem.IsLinux();
+        string[] arguments = ManagerArguments.Build
+        (
+            options,
+            Ports,
+            address,
+            addressResolver.MasterServerHostAndPort,
+            disableNativeRespawn: linuxForkWorkaround,
+            initialIdleTarget: linuxForkWorkaround ? 0 : null
+        );
 
         ProcessStartInfo startInfo = new (executable)
         {
@@ -225,6 +243,8 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
 
         logger.LogInformation("Launched The Match Server Manager (Process {ProcessID})", process.Id);
 
+        StartLinuxStartupCompletion(process);
+
         // If The Process Exited Between "Start" And Now, The "Exited" Event May Have Already Run And Cleared The Running Flag Before This Method Set It. Re-Check So An Instantly-Exiting Manager Does Not Leave The State Stuck Reporting Running With No Live Process, And Wake The Reconcile Loop To Apply The Backoff And Relaunch.
         if (process.HasExited)
         {
@@ -232,6 +252,205 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
 
             reconcileSignal.Release();
         }
+    }
+
+    private void StartLinuxStartupCompletion(Process process)
+    {
+        CancelLinuxStartupCompletion();
+
+        if (OperatingSystem.IsLinux() is false)
+            return;
+
+        CancellationTokenSource cancellation = new ();
+
+        linuxStartupCompletionCancellation = cancellation;
+
+        _ = CompleteLinuxStartupWorkaround(process, cancellation.Token);
+    }
+
+    private async Task CompleteLinuxStartupWorkaround(Process process, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(LinuxIdleActivationDelay, cancellationToken).ConfigureAwait(false);
+
+            // These Two Commands Are Deliberately Tracked Independently. A Transient Failure To Activate The Idle Pool Must Not Leave Native Slave Replacement Disabled, And A Successful Respawn Command Must Not Prevent A Failed Idle Command From Being Retried.
+            bool idleTargetActivated = options.IdleTarget is 0;
+            bool nativeRespawnRestored = false;
+
+            while (cancellationToken.IsCancellationRequested is false && IsCurrentManager(process) && (idleTargetActivated is false || nativeRespawnRestored is false))
+            {
+                if (idleTargetActivated is false)
+                {
+                    idleTargetActivated = await TrySendLinuxStartupCommand
+                    (
+                        $"Set man_idleTarget {options.IdleTarget}",
+                        "Activate The Configured CowMaster Idle Target",
+                        cancellationToken
+                    ).ConfigureAwait(false);
+
+                    if (idleTargetActivated)
+                        logger.LogInformation("Activated CowMaster Idle Target Of {IdleTarget} Instance(s) After The Linux Fork Startup Window", options.IdleTarget);
+                }
+
+                if (nativeRespawnRestored is false)
+                {
+                    nativeRespawnRestored = await TrySendLinuxStartupCommand
+                    (
+                        "Set man_respawnServers true",
+                        "Restore Native CowMaster Slave Respawning",
+                        cancellationToken
+                    ).ConfigureAwait(false);
+
+                    if (nativeRespawnRestored)
+                        logger.LogInformation("Restored Native CowMaster Slave Respawning After The Linux Fork Startup Window");
+                }
+
+                if (idleTargetActivated is false || nativeRespawnRestored is false)
+                    await Task.Delay(LinuxStartupCommandRetryDelay, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Expected When The Manager Stops Or Restarts Before The Delayed Activation Completes.
+        }
+
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Could Not Complete The Linux CowMaster Startup Workaround");
+        }
+    }
+
+    private bool IsCurrentManager(Process process) => IsRunning && ReferenceEquals(managerProcess, process);
+
+    private async Task<bool> TrySendLinuxStartupCommand(string command, string operation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await SendLinuxManagerCommand(command, cancellationToken).ConfigureAwait(false);
+
+            return true;
+        }
+
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+
+        catch (Exception exception)
+        {
+            // The Manager Socket And HCon Helper Can Be Briefly Unavailable While The Native Process Finishes Initialising. Retrying Keeps COMPEL's Desired Idle Capacity And Long-Term Respawn Supervision From Depending On One Timing-Sensitive Command.
+            logger.LogWarning
+            (
+                exception,
+                "Could Not {Operation}; Retrying In {Seconds} Second(s)",
+                operation,
+                LinuxStartupCommandRetryDelay.TotalSeconds
+            );
+
+            return false;
+        }
+    }
+
+    private async Task SendLinuxManagerCommand(string command, CancellationToken cancellationToken)
+    {
+        string helper = Path.Combine(distribution.InstallationDirectory, "linux_server", "hcon");
+
+        if (File.Exists(helper) is false)
+            throw new FileNotFoundException("The Heroes Of Newerth HCon Helper Was Not Found", helper);
+
+        EnsureExecutable(helper);
+
+        string managerSocketPath = Path.Combine(LinuxConsoleDirectory, LinuxManagerConsoleName + ".sock");
+
+        if (File.Exists(managerSocketPath) is false)
+            throw new InvalidOperationException($@"The Match Server Manager Console Socket Was Not Found At ""{managerSocketPath}""");
+
+        ProcessStartInfo startInfo = new (helper)
+        {
+            WorkingDirectory = distribution.InstallationDirectory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        startInfo.ArgumentList.Add(LinuxManagerConsoleName);
+        startInfo.ArgumentList.Add("-c");
+        startInfo.ArgumentList.Add(command);
+
+        using Process console = new () { StartInfo = startInfo };
+
+        if (console.Start() is false)
+            throw new InvalidOperationException("The Heroes Of Newerth HCon Helper Failed To Start");
+
+        Task<string> standardOutput = console.StandardOutput.ReadToEndAsync(cancellationToken);
+        Task<string> standardError = console.StandardError.ReadToEndAsync(cancellationToken);
+
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+
+        try { await console.WaitForExitAsync(timeout.Token).ConfigureAwait(false); }
+
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested is false)
+        {
+            try { console.Kill(); }
+            catch { /* Best-Effort Cleanup Of A Hung Helper. */ }
+
+            throw new TimeoutException("The Heroes Of Newerth HCon Helper Did Not Return Within Ten Seconds");
+        }
+
+        string output = (await standardOutput.ConfigureAwait(false)).Trim();
+        string error = (await standardError.ConfigureAwait(false)).Trim();
+
+        if (console.ExitCode is not 0)
+            throw new InvalidOperationException($"The Heroes Of Newerth HCon Helper Exited With Code {console.ExitCode}: {error}");
+
+        if (string.IsNullOrWhiteSpace(output) is false)
+            logger.LogDebug("HCon: {Output}", output);
+    }
+
+    private void PrepareLinuxConsoleDirectory()
+    {
+        if (OperatingSystem.IsLinux() is false)
+            return;
+
+        try
+        {
+            Directory.CreateDirectory(LinuxConsoleDirectory);
+
+            // HoN Does Not Remove Its Unix Console Socket After A Forced Exit. Delete Only Socket Files Which The Kernel No Longer Reports As Active, Preserving Consoles Belonging To Any Other Live HoN Installation On The Host.
+            HashSet<string> activeSockets = new (StringComparer.Ordinal);
+
+            foreach (string line in File.ReadLines("/proc/net/unix"))
+            {
+                int pathIndex = line.IndexOf('/');
+
+                if (pathIndex >= 0)
+                    activeSockets.Add(line[pathIndex..].Trim());
+            }
+
+            foreach (string socket in Directory.EnumerateFiles(LinuxConsoleDirectory, "*.sock"))
+                if (activeSockets.Contains(socket) is false)
+                    File.Delete(socket);
+        }
+
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Could Not Prepare The Heroes Of Newerth Local Console Directory {Directory}", LinuxConsoleDirectory);
+        }
+    }
+
+    private void CancelLinuxStartupCompletion()
+    {
+        CancellationTokenSource? cancellation = Interlocked.Exchange(ref linuxStartupCompletionCancellation, null);
+
+        if (cancellation is null)
+            return;
+
+        cancellation.Cancel();
+        cancellation.Dispose();
     }
 
     /// <summary>
@@ -299,6 +518,7 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
     private void StopProcess()
     {
         managerRunning = false;
+        CancelLinuxStartupCompletion();
 
         Process? process = Interlocked.Exchange(ref managerProcess, null);
 
@@ -331,6 +551,7 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
     private void OnProcessExited(object? sender, EventArgs eventArguments)
     {
         managerRunning = false;
+        CancelLinuxStartupCompletion();
 
         reconcileSignal.Release();
     }
@@ -390,8 +611,8 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
     {
         logger.LogInformation
         (
-            "Match Server Manager Configured: {Instances} Instance(s), Server Address {ServerAddress}, Master Server {MasterServer}",
-            options.Instances, ServerAddress, addressResolver.MasterServerHostAndPort
+            "Match Server Manager Configured: {Instances} Instance(s), {IdleTarget} Kept IDLE, Server Address {ServerAddress}, Master Server {MasterServer}",
+            options.Instances, options.IdleTarget, ServerAddress, addressResolver.MasterServerHostAndPort
         );
 
         logger.LogInformation

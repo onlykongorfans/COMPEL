@@ -10,6 +10,7 @@ public sealed class MatchServerManagerOptionsValidatorTests
         UserName             = "KONGOR",
         Password             = "secret",
         Instances            = 1,
+        IdleTarget           = 1,
         Gateway              = "kongor.net",
         MasterServer         = "api.kongor.net",
         Location             = "EU",
@@ -94,6 +95,34 @@ public sealed class MatchServerManagerOptionsValidatorTests
     {
         MatchServerManagerOptions options = ValidOptions();
         options.PortRangeOffset = -1;
+
+        await Assert.That(Validate(options).Failed).IsTrue();
+    }
+
+    [Test]
+    public async Task An_Idle_Target_Within_The_Instance_Count_Is_Accepted()
+    {
+        MatchServerManagerOptions options = ValidOptions();
+        options.Instances = Math.Min(5, Environment.ProcessorCount);
+        options.IdleTarget = options.Instances;
+
+        await Assert.That(Validate(options).Succeeded).IsTrue();
+    }
+
+    [Test]
+    public async Task An_Idle_Target_Above_The_Instance_Count_Is_Rejected()
+    {
+        MatchServerManagerOptions options = ValidOptions();
+        options.IdleTarget = options.Instances + 1;
+
+        await Assert.That(Validate(options).Failed).IsTrue();
+    }
+
+    [Test]
+    public async Task A_Negative_Idle_Target_Is_Rejected()
+    {
+        MatchServerManagerOptions options = ValidOptions();
+        options.IdleTarget = -1;
 
         await Assert.That(Validate(options).Failed).IsTrue();
     }

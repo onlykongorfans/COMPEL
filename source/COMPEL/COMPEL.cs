@@ -80,6 +80,7 @@ builder.Services.AddOptions<MatchServerManagerOptions>().Configure(options =>
     options.UserName             = configuration.UserName.Value;
     options.Password             = configuration.Password.Value;
     options.Instances            = configuration.Instances.Value;
+    options.IdleTarget           = configuration.IdleTarget.Value;
     options.Gateway              = configuration.Gateway.Value;
     options.MasterServer         = configuration.MasterServer.Value;
     options.Location             = configuration.Location.Value;
