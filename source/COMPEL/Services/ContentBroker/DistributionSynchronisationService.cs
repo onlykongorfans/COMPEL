@@ -8,13 +8,20 @@ namespace COMPEL.Services.ContentBroker;
 public sealed class DistributionSynchronisationService : BackgroundService
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(15);
-    private const string LegacyManifestSuffix = ".manifest.xml.zip";
+    private const string LegacyManifestSuffix              = ".manifest.xml.zip";
+    private const string LinuxFreetypeRelativePath         = "libs-x86_64/libfreetype.so.6";
+    private const string LinuxFreetypeBackupSuffix         = ".bundled-incompatible-debian13";
 
     // COMPEL Installs The Distribution Alongside Its Own Executable, So Its Own Files (The Binary, "COMPEL.json", "COMPEL.log", "COMPEL.lock", And Any Build Artefacts) Are Protected From Being Overwritten Or Deleted By The Mirror, Regardless Of What The Manifest Declares.
     private static readonly string[] OwnFileProtectionPatterns = [ "COMPEL*" ];
 
+    // The Linux CDN Publishes An Older libfreetype.so.6 Beside The HoN Binaries. On Debian 13 It Is Loaded Ahead Of The Distribution's System libfontconfig And Is Missing FT_Done_MM_Var, Preventing Every Server Binary From Starting. Linux First Migrates Any Existing Bundled Copy Out Of The Loader's Search Path, Then Protects Both The Vacated Original Path And Every Preserved Backup From The Exact-Mirror Synchronisation. Windows Must Continue Receiving Its Own Bundled Library.
+    private static readonly string[] LinuxFileProtectionPatterns = [ "COMPEL*", LinuxFreetypeRelativePath + "*" ];
+
     private readonly CDNOptions options;
     private readonly ILogger<DistributionSynchronisationService> logger;
+    private readonly bool isLinux;
+    private readonly IReadOnlyList<string> protectedTargetPatterns;
     private readonly SemaphoreSlim gate = new (1, 1);
     private readonly TaskCompletionSource ready = new (TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -45,6 +52,9 @@ public sealed class DistributionSynchronisationService : BackgroundService
 
         InstallationDirectory = ResolveInstallationDirectory(this.options.InstallationDirectory);
 
+        isLinux = OperatingSystem.IsLinux();
+        protectedTargetPatterns = ResolveOwnFileProtectionPatterns(isLinux);
+
         DistributionVersion = ResolveInstalledDistributionVersion(InstallationDirectory);
     }
 
@@ -71,6 +81,9 @@ public sealed class DistributionSynchronisationService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // This Migration Runs Before Readiness Even When CDN Synchronisation Is Disabled, So Upgrading COMPEL Cannot Preserve And Launch An Older Installation Which Still Has Debian 13's Incompatible Bundled FreeType In The Loader's Search Path.
+        PreparePlatformCompatibility();
+
         // The Initial Synchronisation Can Be Disabled For Development And Testing: The Existing Local Distribution Is Used, And On-Demand Synchronisation Via The Control Plane Still Works.
         if (options.Synchronisation is false)
         {
@@ -143,6 +156,9 @@ public sealed class DistributionSynchronisationService : BackgroundService
         {
             SynchronisationState = "Synchronising";
 
+            // On-Demand Synchronisation Can Be Invoked Long After Startup. Re-run The Idempotent Migration Under The Same Gate In Case An Operator Or External Updater Restored The Bundled Library In The Meantime.
+            PreparePlatformCompatibility();
+
             logger.LogInformation("Synchronising Match Server Distribution {Variant} From {Host} Into {Directory}", Variant, options.Host, InstallationDirectory);
 
             Manifest manifest = await ContentBroker.FetchManifest(Variant, options.Host, cancellationToken).ConfigureAwait(false);
@@ -151,7 +167,7 @@ public sealed class DistributionSynchronisationService : BackgroundService
 
             Progress<SynchronisationEvent> progress = new (LogSynchronisationEvent);
 
-            SynchronisationSummary summary = await ContentBroker.Synchronise(manifest, Variant, InstallationDirectory, options.Host, options.ParallelTransfers, OwnFileProtectionPatterns, progress, cancellationToken).ConfigureAwait(false);
+            SynchronisationSummary summary = await ContentBroker.Synchronise(manifest, Variant, InstallationDirectory, options.Host, options.ParallelTransfers, protectedTargetPatterns, progress, cancellationToken).ConfigureAwait(false);
 
             SynchronisationState = summary.FilesFailed is 0 ? "Up To Date" : $"Completed With {summary.FilesFailed} Failure(s)";
 
@@ -209,6 +225,45 @@ public sealed class DistributionSynchronisationService : BackgroundService
                 break;
         }
     }
+
+    private void PreparePlatformCompatibility()
+    {
+        string? backupPath = MigrateLinuxFreetype(InstallationDirectory, isLinux);
+
+        if (backupPath is not null)
+            logger.LogInformation("Moved Debian 13-Incompatible Bundled FreeType Out Of The Runtime Library Path To {BackupPath}", backupPath);
+    }
+
+    /// <summary>
+    ///     Moves an existing Linux CDN copy of FreeType out of the runtime loader's search path. Repeated calls are harmless; if a prior backup already exists, a numbered backup preserves both files instead of overwriting either one.
+    /// </summary>
+    internal static string? MigrateLinuxFreetype(string installationDirectory, bool isLinux)
+    {
+        if (isLinux is false)
+            return null;
+
+        string sourcePath = Path.Combine(installationDirectory, LinuxFreetypeRelativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        if (File.Exists(sourcePath) is false)
+            return null;
+
+        string baseBackupPath = sourcePath + LinuxFreetypeBackupSuffix;
+        string backupPath = baseBackupPath;
+        int suffix = 1;
+
+        while (File.Exists(backupPath))
+            backupPath = $"{baseBackupPath}.{suffix++}";
+
+        File.Move(sourcePath, backupPath);
+
+        return backupPath;
+    }
+
+    /// <summary>
+    ///     Returns application-owned target exclusions for the current platform. The Debian 13 FreeType workaround is Linux-only so it cannot suppress a required DLL from the Windows distribution.
+    /// </summary>
+    internal static IReadOnlyList<string> ResolveOwnFileProtectionPatterns(bool isLinux)
+        => isLinux ? LinuxFileProtectionPatterns : OwnFileProtectionPatterns;
 
     // Logs A Throttled Progress Line During A Long Initial Synchronisation So The Operator Sees Movement Between The Plan And The Completion Lines, Without Flooding The Log.
     private void LogProgress(long bytesDownloaded)
