@@ -8,7 +8,6 @@ namespace COMPEL.Services.ContentBroker;
 /// </summary>
 public static class ContentBroker
 {
-    private const string DefaultBaseURL           = "https://cdn.kongor.net/";
     private const string ManifestFileName         = "manifest.json";
     private const string PartialDownloadSuffix    = ".partial";
     private const int    DefaultParallelTransfers = 8;
@@ -16,7 +15,7 @@ public static class ContentBroker
     /// <summary>
     ///     Downloads and parses the manifest for the given <paramref name="variant"/> from the CDN.
     /// </summary>
-    public static async Task<Manifest> FetchManifest(string variant, string baseURL = DefaultBaseURL, CancellationToken cancellationToken = default)
+    public static async Task<Manifest> FetchManifest(string variant, string baseURL, CancellationToken cancellationToken = default)
     {
         string manifestURL = BuildManifestURL(baseURL, variant);
 
@@ -43,7 +42,7 @@ public static class ContentBroker
         Manifest manifest,
         string variant,
         string targetDirectory,
-        string baseURL = DefaultBaseURL,
+        string baseURL,
         int parallelTransfers = DefaultParallelTransfers,
         IReadOnlyList<string>? protectedTargetPatterns = null,
         IProgress<SynchronisationEvent>? progress = null,

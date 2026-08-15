@@ -24,6 +24,7 @@ public sealed class CompelConfigurationLoaderTests
                 await Assert.That(file.IdleTarget.Value).IsEqualTo(1);
                 await Assert.That(file.MasterServer.Value).IsEqualTo("api.kongor.net");
                 await Assert.That(file.RuntimeArtefactsPath.Value).IsEqualTo("DEFAULT");
+                await Assert.That(file.CDNHost.Value).IsEmpty();
                 await Assert.That(file.AuthenticationToken.Value).IsEqualTo("...");
                 await Assert.That(file.ControlPlanePort.Value).IsEqualTo(8080);
             }
@@ -50,6 +51,8 @@ public sealed class CompelConfigurationLoaderTests
             {
                 await Assert.That(file.UserName).IsNotNull();
                 await Assert.That(file.UserName.Value).IsEqualTo("USERNAME");
+                await Assert.That(file.CDNHost).IsNotNull();
+                await Assert.That(file.CDNHost.Value).IsEmpty();
             }
         }
 

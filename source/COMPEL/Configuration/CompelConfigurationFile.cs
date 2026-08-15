@@ -17,6 +17,7 @@ public sealed class CompelConfigurationFile
     public UseProxySetting UseProxy { get; set; } = new ();
     public PortRangeOffsetSetting PortRangeOffset { get; set; } = new ();
     public RuntimeArtefactsPathSetting RuntimeArtefactsPath { get; set; } = new ();
+    public CDNHostSetting CDNHost { get; set; } = new ();
     public CDNSynchronisationSetting CDNSynchronisation { get; set; } = new ();
     public AuthenticationTokenSetting AuthenticationToken { get; set; } = new ();
     public ControlPlanePortSetting ControlPlanePort { get; set; } = new ();
@@ -92,6 +93,12 @@ public sealed class CDNSynchronisationSetting
 {
     public bool Value { get; set; } = true;
     public string Description => "Whether to synchronise the match server distribution from the CDN on startup. Set to 'false' to skip the initial synchronisation for development and testing, in which case the existing local distribution is used; the '/sync' management endpoint can still trigger a synchronisation on demand.";
+}
+
+public sealed class CDNHostSetting
+{
+    public string Value { get; set; } = string.Empty;
+    public string Description => "The base URL of the CDN containing the per-platform match server distributions. This must be configured explicitly; COMPEL appends 'las/manifest.json' on Linux or 'was/manifest.json' on Windows.";
 }
 
 public sealed class AuthenticationTokenSetting

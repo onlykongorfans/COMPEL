@@ -35,7 +35,7 @@ public sealed class DistributionSynchronisationServiceTests
                 }
             };
 
-            SynchronisationSummary summary = await ContentBroker.Synchronise(manifest, "test", directory, protectedTargetPatterns: DistributionSynchronisationService.ResolveOwnFileProtectionPatterns(isLinux: true));
+            SynchronisationSummary summary = await ContentBroker.Synchronise(manifest, "test", directory, "https://example.invalid/", protectedTargetPatterns: DistributionSynchronisationService.ResolveOwnFileProtectionPatterns(isLinux: true));
 
             await Assert.That(summary.FilesFailed).IsEqualTo(0);
             await Assert.That(migratedPath).IsEqualTo(backupPath);

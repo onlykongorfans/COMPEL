@@ -67,6 +67,7 @@ public static class CompelConfigurationLoader
         file.UseProxy             ??= new ();
         file.PortRangeOffset      ??= new ();
         file.RuntimeArtefactsPath ??= new ();
+        file.CDNHost              ??= new ();
         file.CDNSynchronisation   ??= new ();
         file.AuthenticationToken  ??= new ();
         file.ControlPlanePort     ??= new ();

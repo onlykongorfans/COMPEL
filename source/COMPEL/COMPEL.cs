@@ -9,7 +9,7 @@ if (CompelConfigurationLoader.Exists() is false)
 {
     CompelConfigurationLoader.CreateDefault();
 
-    Console.WriteLine($@"Created a default configuration file at ""{CompelConfigurationLoader.ResolvePath()}"". Set at least ""UserName"" and ""Password"", then start COMPEL again.");
+    Console.WriteLine($@"Created a default configuration file at ""{CompelConfigurationLoader.ResolvePath()}"". Set ""UserName"", ""Password"", and ""CDNHost"", then start COMPEL again.");
 
     return;
 }
@@ -33,6 +33,19 @@ catch (InvalidOperationException exception)
 if (configuration.ControlPlanePort.Value is < 1 or > 65535)
 {
     Console.WriteLine($@"The Configured Control Plane Port ({configuration.ControlPlanePort.Value}) Is Invalid; It Must Be Between 1 And 65535.");
+    Console.WriteLine($@"Fix ""{CompelConfigurationLoader.ResolvePath()}"" And Start COMPEL Again.");
+
+    return;
+}
+
+// The CDN Host Is Joined With A Variant And Relative File Paths, So Accept Only An Absolute HTTP(S) Base URL Without A Query Or Fragment. This Produces A Clear Configuration Error Before COMPEL Starts Any Services Or Rewrites The Installation.
+if (Uri.TryCreate(configuration.CDNHost.Value, UriKind.Absolute, out Uri? cdnHost) is false
+    || (cdnHost.Scheme != Uri.UriSchemeHttp && cdnHost.Scheme != Uri.UriSchemeHttps)
+    || string.IsNullOrWhiteSpace(cdnHost.Host)
+    || string.IsNullOrEmpty(cdnHost.Query) is false
+    || string.IsNullOrEmpty(cdnHost.Fragment) is false)
+{
+    Console.WriteLine($@"The Configured CDN Host (""{configuration.CDNHost.Value}"") Is Invalid; It Must Be An Absolute HTTP Or HTTPS Base URL Without A Query Or Fragment.");
     Console.WriteLine($@"Fix ""{CompelConfigurationLoader.ResolvePath()}"" And Start COMPEL Again.");
 
     return;
@@ -92,7 +105,11 @@ builder.Services.AddOptions<MatchServerManagerOptions>().Configure(options =>
 
 builder.Services.AddOptions<ControlPlaneOptions>().Configure(options => options.AuthenticationToken = configuration.AuthenticationToken.Value);
 
-builder.Services.AddOptions<CDNOptions>().Configure(options => options.Synchronisation = configuration.CDNSynchronisation.Value);
+builder.Services.AddOptions<CDNOptions>().Configure(options =>
+{
+    options.Host            = configuration.CDNHost.Value;
+    options.Synchronisation = configuration.CDNSynchronisation.Value;
+});
 
 // JSON: Source-Generated Serialisation Metadata For The Minimal-API Responses (Required Under Native AOT).
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.TypeInfoResolverChain.Insert(0, ControlPlaneJSONContext.Default));

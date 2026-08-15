@@ -8,7 +8,7 @@ public sealed class CDNOptions
     /// <summary>
     ///     The base URL of the content delivery network. Per-variant manifests are fetched from "{Host}/{variant}/manifest.json".
     /// </summary>
-    public string Host { get; set; } = "https://cdn.kongor.net/";
+    public string Host { get; set; } = string.Empty;
 
     /// <summary>
     ///     The distribution variant code for the Windows match server.

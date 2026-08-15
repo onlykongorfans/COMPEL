@@ -34,6 +34,7 @@ All host-facing configuration lives in a single `COMPEL.json` beside the executa
 | `UseProxy`              | Whether to run the proxy (public port remapping + client challenge authentication. Defaults to `true`).                                                                      |
 | `PortRangeOffset`       | Offset into the game/voice port windows. `base + offset + instances` must stay within the 100-port window.                                                                   |
 | `RuntimeArtefactsPath`  | `DEFAULT` (the host account's profile) or a fully qualified path. Windows only, as the runtime artefacts path is hard-coded for the Linux server distribution.               |
+| `CDNHost`               | Base URL containing the `las` and `was` match-server distributions. This must be set explicitly.                                                                            |
 | `CDNSynchronisation`    | Whether to synchronise the distribution from the CDN on startup. Set `false` to skip the initial synchronisation for development/testing (the `/sync` endpoint still works). |
 | `AuthenticationToken`   | Bearer token gating the management endpoints. Leave as `...` to disable remote management.                                                                                   |
 | `ControlPlanePort`      | TCP port for the HTTP control plane (default `8080`).                                                                                                                        |
@@ -44,7 +45,7 @@ All host-facing configuration lives in a single `COMPEL.json` beside the executa
 dotnet run --project source/COMPEL
 ```
 
-On first run COMPEL writes a default `COMPEL.json` next to the executable and exits. Set at least `UserName` and `Password`; set `Gateway` to the address clients use for the match-server host and `MasterServer` to the NEXUS master-server endpoint. Set `AuthenticationToken` to enable remote management. Logs are written to the console and to a single `COMPEL.log` beside the executable.
+On first run COMPEL writes a default `COMPEL.json` next to the executable and exits. Set `UserName`, `Password`, and `CDNHost`; set `Gateway` to the address clients use for the match-server host and `MasterServer` to the NEXUS master-server endpoint. Set `AuthenticationToken` to enable remote management. Logs are written to the console and to a single `COMPEL.log` beside the executable.
 
 ## Control Plane
 
