@@ -231,6 +231,18 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
         else
             startInfo.EnvironmentVariables["HOME"] = artefacts.ProfileDirectory;
 
+        // Compatible LAS Distributions Carry An ABI-Specific libc++ Interposer Which Replaces The Fixed, Fork-Inherited Shuffle RNG Stream With A PID-Aware Stream. Apply It Only To CowMaster's Child Environment: CowMaster Loads It Before libc++, And Every Forked Slave Inherits The Mapping Without Loading The Shim Into COMPEL Or Requiring A Global LD_PRELOAD Setting.
+        if (OperatingSystem.IsLinux())
+        {
+            string expectedShimPath = Path.Combine(distribution.InstallationDirectory, LinuxRngCompatibility.ShimRelativePath);
+            string? activatedShimPath = LinuxRngCompatibility.Apply(startInfo, distribution.InstallationDirectory, isLinux: true);
+
+            if (activatedShimPath is not null)
+                logger.LogInformation("Activated The Linux Fork-Safe Shuffle RNG Compatibility Shim {Path}", activatedShimPath);
+            else
+                logger.LogWarning("The Linux Fork-Safe Shuffle RNG Compatibility Shim Was Not Found At {Path}; CowMaster Will Start Without It", expectedShimPath);
+        }
+
         Process process = new () { StartInfo = startInfo, EnableRaisingEvents = true };
 
         process.Exited += OnProcessExited;

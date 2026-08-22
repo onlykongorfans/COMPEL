@@ -19,6 +19,8 @@ COMPEL is a cross-platform, Native-AOT ASP.NET Core application that launches an
 
 It ships as a single self-contained binary plus a self-describing `COMPEL.json`. The match server distribution is synchronised into the same directory as the executable.
 
+On Linux, a compatible LAS distribution may provide `compatibility/libhon-rng-forksafe.so`. COMPEL loads this ABI-specific compatibility library into CowMaster's child process through `LD_PRELOAD`, and CowMaster's forked slaves inherit it. The library is never loaded into COMPEL itself. Its presence in the LAS manifest enables the workaround; omitting it leaves the Linux launch environment unchanged.
+
 ## Configuration
 
 All host-facing configuration lives in a single `COMPEL.json` beside the executable, in the self-documenting `{ "Value": …, "Description": … }` format. On first run it is generated with defaults and descriptions, and COMPEL stops so it can be edited. Every value is validated at startup, and all startup problems are reported together.
@@ -81,6 +83,7 @@ The `COMPEL.Tests` project (TUnit) covers the port arithmetic, manager arguments
 
 ```
 scripts/    Native AOT release helper
+native/     Reproducible native compatibility libraries and their isolated test harnesses
 source/     COMPEL.slnx, Directory.Build.props/.targets, .editorconfig, the COMPEL project, and the COMPEL.Tests project
 ```
 

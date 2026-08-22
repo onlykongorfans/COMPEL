@@ -211,6 +211,9 @@ DocProject/Help/html
 # Click-Once directory
 publish/
 
+# Native HoN compatibility artefacts are rebuilt from the checked-in source.
+/native/hon-rng-forksafe/build/
+
 # Publish Web Output
 *.[Pp]ublish.xml
 *.azurePubxml
