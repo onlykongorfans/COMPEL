@@ -4,6 +4,31 @@ using Serilog.Events;
 
 Banner.Write();
 
+// Dependency Setup Must Work Before Configuration, CDN Access, Master-Server Authentication, Or Hosted Services Exist. Ordinary Startup Never Installs Packages.
+if (args.Contains(Debian13Dependencies.InstallArgument, StringComparer.Ordinal))
+{
+    if (args.Length is not 1)
+    {
+        Console.Error.WriteLine("Usage: COMPEL --install-dependencies (No Other Arguments)");
+        Environment.ExitCode = 2;
+        return;
+    }
+
+    try
+    {
+        await new Debian13Dependencies().Install(AppContext.BaseDirectory, Console.Out);
+        Console.WriteLine("Start COMPEL Normally When Ready. Normal Startup Applies The Existing FreeType Workaround And Checks The Prepared Distribution.");
+    }
+
+    catch (Exception exception)
+    {
+        Console.Error.WriteLine(exception.Message);
+        Environment.ExitCode = 1;
+    }
+
+    return;
+}
+
 // Configuration Is A Single Self-Describing "COMPEL.json" File Beside The Executable. On First Run It Is Created With Defaults And The Process Stops So The Operator Can Configure It.
 if (CompelConfigurationLoader.Exists() is false)
 {

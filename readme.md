@@ -49,6 +49,22 @@ dotnet run --project source/COMPEL
 
 On first run COMPEL writes a default `COMPEL.json` next to the executable and exits. Set `UserName`, `Password`, and `CDNHost`; set `Gateway` to the address clients use for the match-server host and `MasterServer` to the NEXUS master-server endpoint. Set `AuthenticationToken` to enable remote management. Logs are written to the console and to a single `COMPEL.log` beside the executable.
 
+### Debian 13 x64 dependencies
+
+On a fresh **Debian 13 amd64** VPS, run this once as root from the directory containing COMPEL, before starting the servers:
+
+```sh
+sudo ./COMPEL --install-dependencies
+```
+
+This standalone setup command works without `COMPEL.json`, CDN access or a master-server connection. It exits after setup and does not start COMPEL's services. Stop any COMPEL process using the same installation first; setup uses the existing installation lock.
+
+Setup installs missing `libfontconfig1` and `libfreetype6` packages through the configured APT repositories, plus the legacy `libncurses5`/`libtinfo5` **6.4-4 amd64** compatibility packages from Debian's official HTTPS mirror. Both legacy downloads must match the SHA-256 checksums published on Debian's [libncurses5](https://packages.debian.org/bookworm/amd64/libncurses5/download) and [libtinfo5](https://packages.debian.org/bookworm/amd64/libtinfo5/download) download pages before APT runs. It does not add a Bookworm repository, substitute ABI-6 symlinks, or request package removals or downgrades. Already installed packages are left alone; if everything is installed, no downloads or APT operations are needed. APT errors, unavailable downloads and checksum failures return a non-zero exit code. Review APT's output if installation fails; package installation is not an atomic transaction.
+
+**Normal startup never installs packages.** After distribution preparation (including the existing bundled-FreeType migration), Debian 13 x64 launches run a read-only loader check against the manager and available x64 server libraries/HCon helper. Missing dependencies or a failed probe pause manager launches and produce an actionable console/log error rather than repeatedly spawning a binary that cannot load. COMPEL's control plane stays available, with `ManagerRunning` false in `/status`. Stop COMPEL, run setup, then start it normally; after repairing dependencies manually, `/instances/start` or `/instances/restart` also retries the check. The preflight checks library loading, not complete runtime or gameplay compatibility.
+
+The **new installer and preflight** are restricted to Linux with exact `ID=debian`, `VERSION_ID=13`, and native x64 OS/process architecture. The installer additionally requires root and `dpkg` architecture `amd64`. Windows, ARM, other Debian releases, Ubuntu and other derivatives keep their existing startup behaviour; explicitly requesting setup on an unsupported platform fails without making changes. Existing Linux FreeType and RNG workarounds are unchanged.
+
 ## Control Plane
 
 | Method | Route                                                       | Authentication | Purpose                                                                              |

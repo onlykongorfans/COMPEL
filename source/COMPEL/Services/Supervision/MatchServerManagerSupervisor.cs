@@ -20,6 +20,7 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
     private readonly AddressResolver addressResolver;
     private readonly ArtefactsLocator artefacts;
     private readonly ILogger<MatchServerManagerSupervisor> logger;
+    private readonly Debian13Dependencies dependencies = new ();
 
     private readonly SemaphoreSlim reconcileSignal = new (0, int.MaxValue);
     private readonly SemaphoreSlim lifecycleGate = new (1, 1);
@@ -150,7 +151,7 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
                 // Recorded Before The Attempt, Not Only On Success, So A Launch That Throws Still Enforces The Backoff On The Next Attempt Rather Than Retrying In A Tight Loop.
                 lastAttemptTicks = Environment.TickCount64;
 
-                LaunchProcess();
+                await LaunchProcess(stoppingToken).ConfigureAwait(false);
             }
 
             else if (desiredRunning is false && IsRunning)
@@ -170,7 +171,7 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
         }
     }
 
-    private void LaunchProcess()
+    private async Task LaunchProcess(CancellationToken cancellationToken)
     {
         string executable = distribution.ManagerExecutablePath;
 
@@ -241,6 +242,22 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
                 logger.LogInformation("Activated The Linux Fork-Safe Shuffle RNG Compatibility Shim {Path}", activatedShimPath);
             else
                 logger.LogWarning("The Linux Fork-Safe Shuffle RNG Compatibility Shim Was Not Found At {Path}; CowMaster Will Start Without It", expectedShimPath);
+        }
+
+        string? dependencyFailure = await dependencies.Check(startInfo, cancellationToken).ConfigureAwait(false);
+
+        // A Stop Request Can Arrive While The Read-Only Dependency Probe Is Awaited. Do Not Launch A New Manager After That Request Or During Application Shutdown.
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (desiredRunning is false)
+            return;
+
+        if (dependencyFailure is not null)
+        {
+            // A Missing Host Library Cannot Be Repaired By Respawning HoN. Pause Automatic Launches, But Leave The Control Plane Available So An Operator Can Retry After Repairing Dependencies.
+            desiredRunning = false;
+            logger.LogError("Match Server Launch Paused: {Reason}. Stop COMPEL, Run ./COMPEL --install-dependencies As Root, Then Start COMPEL Again. After A Manual Repair, /instances/start Also Retries The Check", dependencyFailure);
+            return;
         }
 
         Process process = new () { StartInfo = startInfo, EnableRaisingEvents = true };

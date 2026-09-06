@@ -9,6 +9,9 @@ global using Microsoft.Extensions.Logging.Abstractions;
 global using Microsoft.Extensions.Options;
 
 global using System.Buffers.Binary;
+global using System.Diagnostics;
 global using System.Net;
 global using System.Net.Sockets;
+global using System.Runtime.InteropServices;
+global using System.Security.Cryptography;
 global using System.Text;
