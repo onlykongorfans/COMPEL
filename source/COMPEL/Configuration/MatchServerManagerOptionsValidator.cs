@@ -23,8 +23,8 @@ public sealed class MatchServerManagerOptionsValidator : IValidateOptions<MatchS
         else if (options.UserName.Equals("USERNAME", StringComparison.OrdinalIgnoreCase))
             failures.Add(@"""UserName"" Is Still The Default Placeholder; Set It To A Registered Project KONGOR User");
 
-        else if (ContainsUnsafeManagerArgumentCharacter(options.UserName))
-            failures.Add(@"""UserName"" Must Not Contain A Double Quote, Semicolon, Or Control Character");
+        else if (ContainsUnsafeManagerArgumentCharacter(options.UserName) || ContainsWhitespace(options.UserName))
+            failures.Add(@"""UserName"" Must Not Contain Whitespace, A Double Quote, A Semicolon, Or A Control Character");
 
         if (string.IsNullOrWhiteSpace(options.Password))
             failures.Add(@"""Password"" Must Be Provided");
@@ -32,8 +32,8 @@ public sealed class MatchServerManagerOptionsValidator : IValidateOptions<MatchS
         else if (options.Password.Equals("PASSWORD", StringComparison.OrdinalIgnoreCase))
             failures.Add(@"""Password"" Is Still The Default Placeholder; Set It To The User's Password");
 
-        else if (ContainsUnsafeManagerArgumentCharacter(options.Password))
-            failures.Add(@"""Password"" Must Not Contain A Double Quote, Semicolon, Or Control Character");
+        else if (ContainsUnsafeManagerArgumentCharacter(options.Password) || ContainsWhitespace(options.Password))
+            failures.Add(@"""Password"" Must Not Contain Whitespace, A Double Quote, A Semicolon, Or A Control Character");
 
         int processorCount = Environment.ProcessorCount;
 
@@ -96,4 +96,7 @@ public sealed class MatchServerManagerOptionsValidator : IValidateOptions<MatchS
 
     private static bool ContainsUnsafeManagerArgumentCharacter(string value)
         => value.IndexOfAny(UnsafeManagerArgumentCharacters) >= 0 || value.Any(char.IsControl);
+
+    // The Manager's "Set" Command Splits Values On Whitespace; Credentials Cannot Use The Server Name's Workaround Tokens, So Reject Them Instead Of Silently Truncating Them.
+    private static bool ContainsWhitespace(string value) => value.Any(char.IsWhiteSpace);
 }

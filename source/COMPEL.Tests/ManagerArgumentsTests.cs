@@ -78,6 +78,38 @@ public sealed class ManagerArgumentsTests
     }
 
     [Test]
+    public async Task A_Lowercase_Location_Is_Validated_And_Uppercased_Without_Changing_Custom_Master_Or_Linux_Startup_Settings()
+    {
+        MatchServerManagerOptions options = SampleOptions();
+        options.Instances = 1;
+        options.Location = "eu";
+        options.MasterServer = "192.168.0.186:5555";
+
+        string[] arguments = ManagerArguments.Build
+        (
+            options,
+            new PortPlan(options),
+            "1.2.3.4",
+            options.MasterServer,
+            disableNativeRespawn: true,
+            initialIdleTarget: 0
+        );
+
+        string joined = string.Join(' ', arguments);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(new MatchServerManagerOptionsValidator().Validate(name: null, options).Succeeded).IsTrue();
+            await Assert.That(joined.Contains("Set svr_location EU;")).IsTrue();
+            await Assert.That(joined.Contains("Set man_maxServers 1;")).IsTrue();
+            await Assert.That(joined.Contains("Set man_idleTarget 0;")).IsTrue();
+            await Assert.That(joined.Contains("Set man_respawnServers false")).IsTrue();
+            await Assert.That(arguments[Array.IndexOf(arguments, "-masterserver") + 1]).IsEqualTo(options.MasterServer);
+            await Assert.That(options.Location).IsEqualTo("eu");
+        }
+    }
+
+    [Test]
     public async Task The_Linux_Fork_Workaround_Preserves_Full_Startup_Capacity_And_Disables_Native_Respawn()
     {
         MatchServerManagerOptions options = SampleOptions();

@@ -183,8 +183,8 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
 
         string address = ServerAddress ?? throw new InvalidOperationException("The Server Address Has Not Been Resolved");
 
-        // Dispose The Previous Exited Process Object Before Replacing It.
-        Process? previous = managerProcess;
+        // Clear The Previous Process Reference Before Disposing It So A Failed Launch Cannot Leave Stop And Restart Paths Touching A Disposed Object.
+        Process? previous = Interlocked.Exchange(ref managerProcess, null);
 
         if (previous is not null)
         {
@@ -510,11 +510,8 @@ public sealed class MatchServerManagerSupervisor : BackgroundService
     /// </summary>
     private void KillOrphanedProcesses()
     {
+        // On Linux ".NET" Resolves The Full Process Name From The Command Line Rather Than The Kernel's Truncated "comm" Field; The Executable-Path Comparison Below Confirms The Process Identity.
         string executableName = Path.GetFileNameWithoutExtension(HeroesOfNewerthExecutable.FileName);
-
-        // Linux Exposes The Process Name Via "/proc/[pid]/comm", Which Is Truncated To 15 Characters, So The Lookup Name Is Truncated To Match; The Executable-Path Comparison Below Still Confirms The Process Identity.
-        if (OperatingSystem.IsLinux() && executableName.Length > 15)
-            executableName = executableName[..15];
 
         string executablePath = distribution.ManagerExecutablePath;
 

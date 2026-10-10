@@ -1,5 +1,3 @@
-using COMPEL.Services.ContentBroker;
-
 namespace COMPEL.Tests;
 
 /// <summary>

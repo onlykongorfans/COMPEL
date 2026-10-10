@@ -1,6 +1,7 @@
 global using COMPEL;
 global using COMPEL.Configuration;
 global using COMPEL.Endpoints;
+global using COMPEL.Services.ContentBroker;
 global using COMPEL.Services.Ping;
 global using COMPEL.Services.Proxy;
 global using COMPEL.Services.Supervision;
@@ -12,6 +13,7 @@ global using System.Buffers.Binary;
 global using System.Diagnostics;
 global using System.Net;
 global using System.Net.Sockets;
+global using System.Reflection;
 global using System.Runtime.InteropServices;
 global using System.Security.Cryptography;
 global using System.Text;
